@@ -1,0 +1,18 @@
+[[source]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+requests = "*"
+chardet = "*"
+"pyqt5" = "*"
+xlwt = "*"
+xlrd = "*"
+pymysql = "*"
+pymssql = {path = "./pymssql-2.1.4.dev5-cp36-cp36m-win32.whl"}
+xpinyin = "*"
+pyyaml = "*"
+sqlalchemy = "*"
+
+[dev-packages]
