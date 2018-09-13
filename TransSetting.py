@@ -1,10 +1,12 @@
 import datetime
+import sys
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import QIntValidator
 from setting import Ui_Form
 from TransDataProvider import TransDataProvider
-
+from TransModels import TransType
+from TransController import showmsg
 
 class TransSetting(QtWidgets.QWidget, Ui_Form):
     """ 设置界面 """
@@ -16,17 +18,21 @@ class TransSetting(QtWidgets.QWidget, Ui_Form):
         self.pushButton_cancel.clicked.connect(self.hide)
         self.pushButton.clicked.connect(self.save)
         self.isinit = False  # 是否初始化完成
-        self._translist_data = []  # 修改数据存放列表
-        self.set_translist()
-        self.set_trans_dsplay()
-        self.set_trans_data()
+        self.pertab_num = 9  # 一个tab页显示9行数据
+        self.transgroupbox_list = []
+        self.dusplay()
 
-    def set_translist(self):
+
+    def dusplay(self):
         """获取设置参数"""
         if not self._translist:
-            result = self._provider.get_trans_list()
+            result, translist = self._provider.get_trans_list()
             if result:
-                self._translist = result
+                self._translist = translist
+            else:
+                return result, translist
+
+        self.set_trans_dsplay()
 
     def set_trans_dsplay(self):
         """ 初始化界面控件 """
@@ -39,6 +45,8 @@ class TransSetting(QtWidgets.QWidget, Ui_Form):
             tabno = tab.no
             widget = QWidget()
             tranlist = [x for x in self._translist if x.prtno == tabno]
+            if len(tranlist) < self.pertab_num:
+                tranlist.extend(TransType() for i in range(self.pertab_num - len(tranlist)))
             gridlayout = QGridLayout()
             gridlayout.setSpacing(12)
             for num, tran in enumerate(tranlist):
@@ -49,160 +57,137 @@ class TransSetting(QtWidgets.QWidget, Ui_Form):
                 # 垂直位置
                 col = num % 3
                 # 组合框
-                groupbox = QGroupBox(tran.text)
-                # 组合框布局
-                gridlayout_group = QGridLayout()
-                # 开始时间
-                lable_begin = QLabel()
-                timeedit_begin = QTimeEdit()
-                timeedit_begin.setDisplayFormat("hh:mm:00")
-                timeedit_begin.setObjectName("{}_timedit_begin".format(transid))
-                timeedit_begin.timeChanged.connect(self.change)
-                lable_begin.setText("开始时间")
-                gridlayout_group.addWidget(lable_begin,0,1)
-                gridlayout_group.addWidget(timeedit_begin,0,2,1,2)
-                # 结束时间
-                lable_end = QLabel()
-                timeedit_end = QTimeEdit()
-                timeedit_end.setDisplayFormat("hh:mm:59")
-                timeedit_end.setObjectName("{}_timedit_end".format(transid))
-                timeedit_end.timeChanged.connect(self.change)
-                lable_end.setText("结束时间")
-                gridlayout_group.addWidget(lable_end, 1, 1)
-                gridlayout_group.addWidget(timeedit_end, 1, 2, 1,2)
-                # 手动/自动传输
-                radiobutton_manual = QRadioButton()
-                radiobutton_manual.setText("手动传输")
-                radiobutton_manual.setObjectName("{}_radiobutton_manual".format(transid))
-                radiobutton_manual.clicked.connect(self.change)
-                radiobutton_auto = QRadioButton()
-                radiobutton_auto.setText("自动动传输")
-                radiobutton_auto.setObjectName("{}_radiobutton_auto".format(transid))
-                radiobutton_auto.clicked.connect(self.change)
-                gridlayout_group.addWidget(radiobutton_manual, 2, 1)
-                gridlayout_group.addWidget(radiobutton_auto, 2, 2)
-                # 传输间隔类型
-                label_space = QLabel()
-                label_space.setText("传输间隔")
-                lineedit_space = QLineEdit()
-                lineedit_space.setObjectName("{}_lineedit_space".format(transid))
-                # 设置只允许输入数字
-                objvalidator = QIntValidator(1, 14400)
-                lineedit_space.setValidator(objvalidator)
-                lineedit_space.textChanged.connect(self.change)
-                combobox_space = QComboBox()
-                combobox_space.setObjectName("{}_combobox_space".format(transid))
-                combobox_space.addItem("小时")
-                combobox_space.setItemData(0, 0)
-                combobox_space.addItem("分钟")
-                combobox_space.setItemData(1, 1)
-                combobox_space.setCurrentIndex(1)
-                combobox_space.currentIndexChanged.connect(self.change)
-                gridlayout_group.addWidget(label_space, 3, 1)
-                gridlayout_group.addWidget(lineedit_space, 3, 2)
-                gridlayout_group.addWidget(combobox_space, 3, 3)
-
-                # 设置间距
-                gridlayout_group.setHorizontalSpacing(10)
-                gridlayout_group.setVerticalSpacing(10)
-                gridlayout_group.setContentsMargins(10, 10, 10, 10)
-                # 添加到组合框
-                groupbox.setLayout(gridlayout_group)
-                gridlayout.addWidget(groupbox, row, col)
+                transgroupbox = TransGroupBox(tran)
+                gridlayout.addWidget(transgroupbox.groupbox, row, col)
+                self.transgroupbox_list.append(transgroupbox)
 
             widget.setLayout(gridlayout)
             self.tabWidget.addTab(widget, tabname)
 
-    def set_trans_data(self):
-        """ 设置界面数据 """
-        translist = [x for x in self._translist if x.sheetid]
-        for trans in translist:
-            begin_hour = trans.start_hour or 0
-            end_hour = trans.end_hour or 0
-            transtype = trans.trans_type
-            transid = trans.sheetid
-            space_type = trans.space_type
-            space_time = trans.space_time or 0
-            timeedit_begin = self.findChild((QTimeEdit,), "{}_timedit_begin".format(transid) )
-            timeedit_begin.setTime(datetime.time(begin_hour, 0, 0))
-            timeedit_end = self.findChild((QTimeEdit,), "{}_timedit_end".format(transid))
-            timeedit_end.setTime(datetime.time(end_hour, 59, 59))
-            radiobutton_auto = self.findChild((QRadioButton,), "{}_radiobutton_auto".format(transid))
-            radiobutton_manual = self.findChild((QRadioButton,), "{}_radiobutton_manual".format(transid))
-            combobox_space = self.findChild((QComboBox,),'{}_combobox_space'.format(transid))
-            lineedit_space = self.findChild((QLineEdit,), '{}_lineedit_space'.format(transid))
-            lineedit_space.setText(str(space_time))
-            if transtype == "1":
-                radiobutton_auto.setChecked(False)
-                radiobutton_manual.setChecked(True)
-            else:
-                radiobutton_auto.setChecked(True)
-                radiobutton_manual.setChecked(False)
-
-            if space_type == '1':
-                combobox_space.setCurrentIndex(1)
-            else:
-                combobox_space.setCurrentIndex(0)
-        self.isinit = True  # 初始化完成
-
-    def change(self):
-        """ 界面改动出发事件"""
-        # 界面未初始化赋值时不需要出发此事件
-        if not self.isinit:
-            return
-
-        data = {}
-        try:
-            # 触发该事件的对象
-            sender = self.sender()
-            # 对象名称
-            name = sender.objectName()
-            # 传输
-            sheetid = name.split("_")[0]
-            data.sheetid = sheetid
-            # time控件
-            if isinstance(sender, QTimeEdit):
-                hour = sender.text().split(":")[0]
-                if name.split("_")[2] == "begin":
-                    data.start_hour = int(hour)
-                if name.split("_")[2] == "end":
-                    data.end_hour = int(hour)
-            # radio控件
-            if isinstance(sender, QRadioButton):
-                if name.split("_")[2] == "manual":
-                    data.trans_type = "1"
-                if name.split("_")[2] == "auto":
-                    data.trans_type = "0"
-            # lineeidt
-            if isinstance(sender, QLineEdit):
-                space_time = sender.text()
-                if not space_time:
-                    return
-                if not space_time.isdigit():
-                    return
-                if name.split('_')[2] == 'space':
-                    data.space_time = int(space_time)
-
-            if isinstance(sender, QComboBox):
-                space_type = sender.currentData()
-                if name.split('_')[2] == 'space':
-                    data.space_type = str(space_type)
-
-            # 如果已经存在，则改变状态
-            data_exists = [x for x in self._translist_data if x["fsheetid"] == sheetid]
-            if data_exists:
-                index = self._translist_data.index(data_exists[0])
-                self._translist_data[index].update(data)
-            else:
-                self._translist_data.append(data)
-        except Exception as e:
-            showmsg(str(e), type=QMessageBox.Critical)
-
     def save(self):
         """保存设置"""
-        result, msg = self._provider.update_setting(self._translist_data)
-        if result:
-            self._translist_data = []
-            showmsg("保存成功！")
-        else:
-            showmsg(str(e), type=QMessageBox.Critical)
+        try:
+            transtype_list = []
+            for transgroupbox in self.transgroupbox_list:
+                transgroupbox.save()
+                transtype_list.append(transgroupbox.transtype)
+            result, data = self._provider.set_trans_list(transtype_list)
+            if result:
+                showmsg("保存成功")
+            else:
+                showmsg(data)
+        except Exception as e:
+            showmsg(repr(e))
+
+
+
+
+class TransGroupBox(QWidget):
+    """通过传输模型获取组合框，用于显示和设置传输"""
+    def __init__(self, transtype):
+        super(TransGroupBox, self).__init__()
+        self.transtype = transtype
+        self.initUI()
+
+    def initUI(self):
+        self.groupbox = QGroupBox()
+        self.gridlayout = QGridLayout()
+
+        # 开始时间
+        self.timeedit_begin = QTimeEdit()
+        self.lable_begin = QLabel()
+        self.timeedit_begin.setDisplayFormat("hh:mm:00")
+        self.lable_begin.setText("开始时间")
+
+        # 结束时间
+        self.lable_end = QLabel()
+        self.timeedit_end = QTimeEdit()
+        self.timeedit_end.setDisplayFormat("hh:mm:59")
+        self.lable_end.setText("结束时间")
+
+        # 手动/自动传输
+        self.radiobutton_manual = QRadioButton()
+        self.radiobutton_manual.setText("手动传输")
+        self.radiobutton_auto = QRadioButton()
+        self.radiobutton_auto.setText("自动传输")
+
+        # 传输间隔类型
+        self.label_space = QLabel()
+        self.label_space.setText("传输间隔")
+        self.lineedit_space = QLineEdit()
+
+        # 设置只允许输入数字
+        objvalidator = QIntValidator(1, 14400)
+        self.lineedit_space.setValidator(objvalidator)
+
+        # 间隔类型
+        self.combobox_space = QComboBox()
+        self.combobox_space.addItem("小时")
+        self.combobox_space.setItemData(0, 0)
+        self.combobox_space.addItem("分钟")
+        self.combobox_space.setItemData(1, 1)
+        self.combobox_space.setCurrentIndex(1)
+
+        # 设置布局间距
+        self.gridlayout.setHorizontalSpacing(10)
+        self.gridlayout.setVerticalSpacing(10)
+        self.gridlayout.setContentsMargins(10, 10, 10, 10)
+
+        if self.transtype.sheetid:
+            self.gridlayout.addWidget(self.lable_begin, 0, 1)
+            self.gridlayout.addWidget(self.timeedit_begin, 0, 2, 1, 2)
+            self.gridlayout.addWidget(self.lable_end, 1, 1)
+            self.gridlayout.addWidget(self.timeedit_end, 1, 2, 1, 2)
+            self.gridlayout.addWidget(self.radiobutton_manual, 2, 1)
+            self.gridlayout.addWidget(self.radiobutton_auto, 2, 2)
+            self.gridlayout.addWidget(self.label_space, 3, 1)
+            self.gridlayout.addWidget(self.lineedit_space, 3, 2)
+            self.gridlayout.addWidget(self.combobox_space, 3, 3)
+
+        # 添加到组合框
+        self.groupbox.setLayout(self.gridlayout)
+        self.groupbox.setTitle(self.transtype.text)
+
+        # 组合框布局
+        transid = self.transtype.sheetid
+        if transid:
+            # 开始时间
+            self.timeedit_begin.setObjectName("{}_timedit_begin".format(transid))
+            start_hour = self.transtype.start_hour or 0
+            self.timeedit_begin.setTime(datetime.time(start_hour, 0, 0))
+
+            self.timeedit_end.setObjectName("{}_timedit_end".format(transid))
+            end_hour = self.transtype.end_hour or 0
+            self.timeedit_end.setTime(datetime.time(end_hour, 0, 0))
+
+            self.radiobutton_manual.setObjectName("{}_radiobutton_manual".format(transid))
+            self.radiobutton_auto.setObjectName("{}_radiobutton_auto".format(transid))
+            if self.transtype.trans_type:
+                self.radiobutton_auto.setChecked(True)
+                self.radiobutton_manual.setChecked(False)
+            else:
+                self.radiobutton_auto.setChecked(False)
+                self.radiobutton_manual.setChecked(True)
+
+            space_time = self.transtype.space_time
+            self.lineedit_space.setObjectName("{}_lineedit_space".format(transid))
+            if space_time:
+                self.lineedit_space.setText(str(space_time))
+
+            space_type = self.transtype.space_type or '0'
+            self.combobox_space.setObjectName("{}_combobox_space".format(transid))
+            self.combobox_space.setCurrentIndex(int(space_type))
+
+    def save(self):
+        self.transtype.start_hour = self.timeedit_begin.time().hour()
+        self.transtype.end_hour = self.timeedit_end.time().hour()
+        self.transtype.space_type = self.combobox_space.currentData()
+        self.transtype.space_time = self.lineedit_space.text()
+        self.transtype.trans_type = self.radiobutton_manual.isCheckable()
+
+
+if __name__ == "__main__":
+    app = QtWidgets.QApplication(sys.argv)
+    setting = TransSetting()
+    setting.show()
+    sys.exit(app.exec_())

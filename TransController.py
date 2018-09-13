@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QMessageBox,QGridLayout
 def showmsg(showmsg, detailmsg=None, type=None, default=None):
     msgbox = QMessageBox()
     # 标题
-    title = "科脉-数据传输中心"
+    title = "数据传输中心"
     # 消息类型
     if type is None:
         type = QMessageBox.Information

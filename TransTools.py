@@ -4,10 +4,10 @@ from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QEvent, QThread, pyqtSignal
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
-from PyQt5.QtGui import  QIcon
+from PyQt5.QtGui import QIcon
 from mainwindow import Ui_MainWindow
 from TransController import TransController, showmsg
-from TransDataProvider import TransDataProvider
+from TransDataProvider import TransDataProvider, TransDataBase
 from TransManual import TransManual
 from TransSetting import TransSetting
 
@@ -19,6 +19,7 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
         super(Main, self).__init__()  # 初始化
         self.setupUi(self)
 
+        self._database = TransDataBase()  # 在此处写入基础数据
         self._provider = TransDataProvider()  # 数据提供对象
         self._controller = TransController()  # 业务控制对象
 
@@ -81,6 +82,8 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
             translist = signal.get("translist", None)
             if translist:
                 self.set_transinfo(translist)
+                #
+                self.set_trans_log()
         except Exception as e:
             showmsg(str(e))
 
@@ -108,6 +111,49 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
                         child.setText(0, trans.text)
                         child.setText(1, str(trans.no))
         return True, None
+
+    def set_trans_log(self):
+        """设置传输日志"""
+        # 开始时间
+        begin_time = self.dateEdit_begin.text()
+        # 结束时间
+        end_time = self.dateEdit_end.text()
+        # 状态
+        status = self.comboBox_ramge.currentData()
+        # 类型
+        no = self.treeWidget_menu.currentItem().text(1)
+
+        # 获取数据库数据
+        result, translog_list = self._provider.get_trans_log(begin_time=begin_time, end_time=end_time, no=no, status=status)
+        if not result:
+            return result, translog_list
+        # 总行数
+        if not translog_list:
+            self.model.clear()
+
+        headers = ("接口状态", "接口类型", "开始时间", "结束时间", "影响行数", "错误原因")
+        self.model.setHorizontalHeaderLabels(headers)
+        self.model.setRowCount(len(translog_list))
+        self.model.setColumnCount(len(headers))
+        for row_num, translog in enumerate(translog_list):
+            status = translog.status
+            # text = translog.text
+            begin_time = translog.begin_time
+            end_time = translog.end_time
+            trans_count = translog.trans_count
+            msg = translog.msg
+
+            cols = [status, begin_time, end_time, trans_count, msg]
+            for col_num, col in enumerate(cols):
+                col_value = str(col)
+                item = QtGui.QStandardItem(value)
+                if not status:
+                    item.setForeground(Qt.red)
+                self.model.setItem(row_num, col_num, item)
+        # 排序
+        self.model.sort(2, order=Qt.DescendingOrder)
+        # 自适应列宽
+        self.tableView_log.resizeColumnsToContents()
 
     def create_trayicon(self):
         """创建托盘"""
@@ -179,43 +225,6 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
             self.comboBox_ramge.setItemData(num, data)
         self.comboBox_ramge.setCurrentIndex(len(range_list) - 1)
 
-    def set_trans_log(self):
-        """设置传输日志"""
-        # 开始时间
-        begin_date = self.dateEdit_begin.text()
-        # 结束时间
-        end_date = self.dateEdit_end.text()
-        # 状态
-        status = self.comboBox_ramge.currentData()
-        # 类型
-        sheetno = self.treeWidget_menu.currentItem().text(1)
-
-        # 获取数据库数据
-        result, data = self._provider.get_trans_log(begin_date=begin_date, end_date=end_date,sheetno=sheetno, status=status)
-        if not result:
-            return result, data
-        # 总行数
-        length = len(data)
-        if length == 0:
-            self.model.clear()
-        headers = ("接口状态", "接口类型", "开始时间", "结束时间", "影响行数", "错误原因")
-        cols = ("fstatus", "ftext", "fbegin_date","fend_date","ftrans_cnt","fmsg")
-        self.model.setHorizontalHeaderLabels(headers)
-        self.model.setRowCount(length)
-        self.model.setColumnCount(len(headers))
-        for number, row in enumerate(data):
-            status = data[number][cols[0]]
-            for i in range(len(cols)):
-                value = str(data[number][cols[i]])
-                item = QtGui.QStandardItem(value)
-                if status == '失败':
-                    item.setForeground(Qt.red)
-                self.model.setItem(number, i, item)
-        # 排序
-        self.model.sort(2, order=Qt.DescendingOrder)
-        # 自适应列宽
-        self.tableView_log.resizeColumnsToContents()
-
     def manual(self):
         """手动传输"""
         try:
@@ -242,12 +251,15 @@ class DisplayThread(QThread):
     def run(self):
         """异步获取，获取运行时信息"""
         _provider = TransDataProvider()  # 数据库数据提供对象
-        result = _provider.get_trans_list()  # 获取传输列表
-        signal = dict(translist=result)
-        self.trigger.emit(signal)
+        result, translist = _provider.get_trans_list()  # 获取传输列表
+        if not result:
+            showmsg(translist, type=QMessageBox.Critical)
+        else:
+            signal = dict(translist=translist)
+            self.trigger.emit(signal)
 
 
-def main():
+def f_main():
     """主程序，保证程序单实例运行"""
     app = QtWidgets.QApplication(sys.argv)
     servername = "TransTools"
@@ -274,7 +286,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    f_main()
 
 
 
