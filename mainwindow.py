@@ -1,9 +1,8 @@
-
 # -*- coding: utf-8 -*-
 
 # Form implementation generated from reading ui file 'mainwindow.ui'
 #
-# Created by: PyQt5 UI code generator 5.8.2
+# Created by: PyQt5 UI code generator 5.8
 #
 # WARNING! All changes made in this file will be lost!
 
@@ -62,11 +61,13 @@ class Ui_MainWindow(object):
         self.treeWidget_menu.headerItem().setText(0, "1")
         self.gridLayout.addWidget(self.treeWidget_menu, 1, 0, 3, 1)
         self.tableView_log = QtWidgets.QTableView(self.centralwidget)
+        self.tableView_log.setStyleSheet("")
+        self.tableView_log.setSortingEnabled(True)
         self.tableView_log.setObjectName("tableView_log")
         self.gridLayout.addWidget(self.tableView_log, 2, 1, 1, 2)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 930, 23))
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 930, 22))
         self.menubar.setObjectName("menubar")
         MainWindow.setMenuBar(self.menubar)
         self.statusbar = QtWidgets.QStatusBar(MainWindow)
@@ -84,3 +85,4 @@ class Ui_MainWindow(object):
         self.pushButton_manual.setText(_translate("MainWindow", "手动传输"))
         self.pushButton_setting.setText(_translate("MainWindow", "设置"))
         self.pushButton_quit.setText(_translate("MainWindow", "退出"))
+

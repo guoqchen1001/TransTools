@@ -80,8 +80,6 @@ class TransSetting(QtWidgets.QWidget, Ui_Form):
             showmsg(repr(e))
 
 
-
-
 class TransGroupBox(QWidget):
     """通过传输模型获取组合框，用于显示和设置传输"""
     def __init__(self, transtype):

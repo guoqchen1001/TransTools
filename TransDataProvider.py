@@ -1,7 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from TransConfiger import Config
-from TransModels import TransType, Base, TransLog, get_init_translist
+from TransModels import TransType, Base, TransLog,TransModelInit
+
 
 
 class TransDataBase:
@@ -43,7 +44,7 @@ class TransDataBase:
             session.close()
             return
         else:
-            session.bulk_save_objects(get_init_translist())
+            session.bulk_save_objects(TransModelInit.get_init_translist())
             session.commit()
             session.close()
 
@@ -69,7 +70,10 @@ class TransDataProvider:
         if not result:
             return result, config
         if result:
-            engine = create_engine(config["engine"])
+            if engine_name == 'oracle':
+                engine = create_engine(config["engine"], encoding='gbk', use_ansi=False)
+            else:
+                engine = create_engine(config["engine"])
         return True, engine
 
     def get_orm_session(self,engine_name=None):
@@ -92,7 +96,7 @@ class TransDataProvider:
     def set_trans_list(self, transtype_list):
         """更新传输接口"""
         try:
-            result, session = self.get_orm_engine()
+            result, session = self.get_orm_session()
             if not result:
                 return result, session
             for transtype in transtype_list:
@@ -121,12 +125,14 @@ class TransDataProvider:
             result = result.filter(TransLog.begin_time >= kwargs["begin_time"])
         if kwargs.get("end_time", None):
             result = result.filter(TransLog.end_time <= kwargs["end_time"])
-        if kwargs.get("status", None):
+        if kwargs.get("status", ''):
             result = result.filter(TransLog.status == kwargs["status"])
 
         return True, result.all()
 
 
 if __name__ == "__main__":
-    provider = TransDataProvider()
-    print(provider.get_trans_log(status="1", begin_time="2018-09-12"))
+    # provider = TransDataProvider()
+    # print(provider.get_trans_log(status="1", begin_time="2018-09-12"))
+    pass
+

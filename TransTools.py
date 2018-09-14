@@ -5,11 +5,13 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QEvent, QThread, pyqtSignal
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtGui import QIcon
+import qdarkstyle
 from mainwindow import Ui_MainWindow
 from TransController import TransController, showmsg
 from TransDataProvider import TransDataProvider, TransDataBase
 from TransManual import TransManual
 from TransSetting import TransSetting
+from TransModels import TransModelInit
 
 
 class Main(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -52,9 +54,9 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
         self.tableView_log.setModel(self.model)
 
         # 树点击事件
-        self.treeWidget_menu.clicked.connect(self.set_trans_log)
+        self.treeWidget_menu.clicked.connect(self.set_translog)
         # 过滤按钮点击事件
-        self.pushButton_query.clicked.connect(self.set_trans_log)
+        self.pushButton_query.clicked.connect(self.set_translog)
         # 手动传输按钮点击时间
         self.pushButton_manual.clicked.connect(self.manual)
         # 设置按钮事件
@@ -83,9 +85,28 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
             if translist:
                 self.set_transinfo(translist)
                 #
-                self.set_trans_log()
+                self.set_translog()
         except Exception as e:
             showmsg(str(e))
+
+    def set_time_and_range(self):
+        now = datetime.datetime.now()
+        # 设置日期及日期格式
+        self.dateEdit_begin.setDate(now)
+        self.dateEdit_end.setDate(now)
+        self.dateEdit_begin.setDisplayFormat('yyyy-MM-dd')
+        self.dateEdit_end.setDisplayFormat('yyyy-MM-dd')
+        # 设置时间及时间格式
+        self.timeEdit_begin.setTime(datetime.time(0, 0, 0))
+        self.timeEdit_end.setTime(datetime.time(23, 59, 59))
+        self.timeEdit_begin.setDisplayFormat('hh:mm:ss')
+        self.timeEdit_end.setDisplayFormat('hh:mm:ss')
+        # 设置查询范围
+        range_status = TransModelInit.trans_status_choice
+        for num, status in enumerate(range_status.keys()):
+            self.comboBox_ramge.addItem(status)
+            self.comboBox_ramge.setItemData(num, range_status.get(status, ''))
+        self.comboBox_ramge.setCurrentIndex(0)
 
     def set_transinfo(self, param):
         transinfo_list = param
@@ -112,7 +133,7 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
                         child.setText(1, str(trans.no))
         return True, None
 
-    def set_trans_log(self):
+    def set_translog(self):
         """设置传输日志"""
         # 开始时间
         begin_time = self.dateEdit_begin.text()
@@ -120,6 +141,7 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
         end_time = self.dateEdit_end.text()
         # 状态
         status = self.comboBox_ramge.currentData()
+        status = TransModelInit.trans_status_choice.get(status, '')
         # 类型
         no = self.treeWidget_menu.currentItem().text(1)
 
@@ -135,25 +157,34 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
         self.model.setHorizontalHeaderLabels(headers)
         self.model.setRowCount(len(translog_list))
         self.model.setColumnCount(len(headers))
+        choice = TransModelInit.trans_status_choice
+        choice_reverse = {v: k for k, v in choice.items()}
         for row_num, translog in enumerate(translog_list):
-            status = translog.status
-            # text = translog.text
-            begin_time = translog.begin_time
-            end_time = translog.end_time
-            trans_count = translog.trans_count
-            msg = translog.msg
 
-            cols = [status, begin_time, end_time, trans_count, msg]
+            status = translog.status
+            status = choice_reverse.get(status, '')
+
+            text = translog.transtype.text
+            begin_time = translog.begin_time.strftime('%Y-%m-%d %H:%M:%S.%f')
+            end_time = translog.end_time.strftime('%Y-%m-%d %H:%M:%S.%f')
+            trans_count = translog.trans_count or 0
+            msg = translog.msg or ''
+
+            cols = [status, text, begin_time, end_time, trans_count, msg]
             for col_num, col in enumerate(cols):
                 col_value = str(col)
-                item = QtGui.QStandardItem(value)
-                if not status:
+                item = QtGui.QStandardItem(col_value)
+                if choice.get(status, '') == '0':
                     item.setForeground(Qt.red)
                 self.model.setItem(row_num, col_num, item)
         # 排序
         self.model.sort(2, order=Qt.DescendingOrder)
         # 自适应列宽
-        self.tableView_log.resizeColumnsToContents()
+        self.tableView_log.horizontalHeader().setDefaultSectionSize(118)
+        self.tableView_log.horizontalHeader()
+
+        self.tableView_log.verticalHeader().setDefaultSectionSize(25)
+
 
     def create_trayicon(self):
         """创建托盘"""
@@ -203,27 +234,7 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
             except Exception as e:
                 showmsg(str(e), QMessageBox.Critical)
 
-    def set_time_and_range(self):
-        now = datetime.datetime.now()
-        # 设置日期及日期格式
-        self.dateEdit_begin.setDate(now)
-        self.dateEdit_end.setDate(now)
-        self.dateEdit_begin.setDisplayFormat('yyyy-MM-dd')
-        self.dateEdit_end.setDisplayFormat('yyyy-MM-dd')
-        # 设置时间及时间格式
-        self.timeEdit_begin.setTime(datetime.time(0, 0, 0))
-        self.timeEdit_end.setTime(datetime.time(23, 59, 59))
-        self.timeEdit_begin.setDisplayFormat('hh:mm:ss')
-        self.timeEdit_end.setDisplayFormat('hh:mm:ss')
-        # 设置查询范围
-        range_list = ['失败','成功', '全部']
-        for num, status in enumerate(range_list):
-            self.comboBox_ramge.addItem(status)
-            data = num
-            if num + 1 == len(range_list):
-                data = - 1
-            self.comboBox_ramge.setItemData(num, data)
-        self.comboBox_ramge.setCurrentIndex(len(range_list) - 1)
+
 
     def manual(self):
         """手动传输"""
@@ -277,6 +288,7 @@ def f_main():
 
     try:
         main = Main()
+        app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
         main.show()
         sys.exit(app.exec_())
     except Exception as e:
