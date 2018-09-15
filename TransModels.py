@@ -1,7 +1,8 @@
 from sqlalchemy import Column, String, Integer, DateTime, NVARCHAR, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+import datetime
 from sqlalchemy import Table, MetaData
+
 
 Base = declarative_base()
 
@@ -16,30 +17,47 @@ class TransType(Base):
     text = Column(NVARCHAR(50), nullable=False, default='', comment="名称")
     sheetid = Column(String(20), default='', comment="接口id")
     status = Column(String(1) , default='', comment="状态 0/终止 1 正常")
-    space_type = Column(String(1), default='', comment="间隔类型 0/小时 1/分钟")
+    space_type = Column(String(1), default='0', comment="间隔类型 0/分钟 1/小时")
     space_time = Column(Integer,  default=0, comment="间隔时间")
     start_hour = Column(Integer, nullable=False, default=0, comment="开始小时数，范围0-23")
     end_hour = Column(Integer, nullable=False, default=0, comment="结束小时数, 范围0-23")
-    trans_type = Column(String(1),  default='', comment="传输类型(0/自动 1/手动")
+    trans_type = Column(String(1),  default='0', comment="传输类型(0/自动 1/手动")
     last_time = Column(DateTime, comment="最后一次传输时间")
     max_transid = Column(Integer, nullable=False, default=0, comment="最大transid")
-    translog = relationship("TransLog", back_populates="transtype")
 
     def __repr__(self):
         return "<TransType {}>".format(self.no)
+
+    def is_should_run(self):
+        # 必须手动传输
+        if self.trans_type == '0':
+            return False
+        now = datetime.datetime.now()
+        # 必须在开始时间内
+        if now.hour > self.end_hour or now.hour < self.start_hour:
+            return False
+        # 必须超过时间间隔
+        if self.last_time is not None:
+            time_delta = now - self.last_time
+            if self.space_type == '0' and time_delta.seconds < self.space_time*60:
+                return False
+            if self.space_type == '1' and time_delta.seconds < self.space_time*3600:
+                return False
+        return True
 
 
 class TransLog(Base):
     """传输日志"""
     __tablename__ = "ts_t_sys_log"
     id = Column(Integer,  primary_key=True, autoincrement=True, comment="id，自增列")
-    no = Column(String(25), ForeignKey("ts_t_sys_funclist.no"), nullable=False, default="", comment="传输编码")
+    sheetid = Column(String(25), nullable=False, default="", comment="传输编码")
     status = Column(String(1), comment="传输状态")
     begin_time = Column(DateTime, comment="开始时间")
     end_time = Column(DateTime, comment="结束时间")
     trans_count = Column(Integer, comment="传输时间")
     msg = Column(NVARCHAR(1024), comment="错误信息")
-    transtype = relationship("TransType")
+    text = Column(NVARCHAR(50), comment="名称")
+    no = Column(String(30), comment="编码")
 
     def __repr__(self):
         return "<TransLog {}>".format(self.id)
@@ -77,11 +95,12 @@ class TransModelInit:
         sheet = TransType(no="wms.sheet", prtno="wms", lvl=2, srlid=2, text="业务单据", sheetid='')
 
         # 三级
-        item = TransType(no="wms.base.item", prtno="wms.base", lvl=3, srlid=1, text="商品信息", sheetid="item")
-        itemcls = TransType(no="wms.base.itemcls", prtno="wms.base", lvl=3, srlid=2, text="商品类别", sheetid="itemcls")
-        barcode = TransType(no="wms.base.barcode", prtno="wms.base", lvl=3, srlid=3, text="多包装", sheetid="barcode")
-        order = TransType(no="wms.sheet.order", prtno="wms.sheet", lvl=3, srlid=1, text="采购订单", sheetid="order")
-        returnorder = TransType(no="wms.sheet.returnorder", prtno="wms.sheet", lvl=3, srlid=2, text="采购退货单",sheetid="returnorder")
+        item = TransType(no="wms.base.item", prtno="wms.base", lvl=3, srlid=1, text="商品信息", sheetid="Item")
+        itemcls = TransType(no="wms.base.itemcls", prtno="wms.base", lvl=3, srlid=2, text="商品类别", sheetid="ItemCls")
+        barcode = TransType(no="wms.base.barcode", prtno="wms.base", lvl=3, srlid=3, text="多包装", sheetid="Barcode")
+        order = TransType(no="wms.sheet.order", prtno="wms.sheet", lvl=3, srlid=1, text="采购订单", sheetid="Order")
+        returnorder = TransType(no="wms.sheet.returnorder", prtno="wms.sheet", lvl=3, srlid=2, text="采购退货单",sheetid="ReturnOrder")
 
         return wms, base, sheet, item, itemcls, barcode, order, returnorder
+
 

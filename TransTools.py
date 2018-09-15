@@ -7,7 +7,7 @@ from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtGui import QIcon
 import qdarkstyle
 from mainwindow import Ui_MainWindow
-from TransController import TransController, showmsg
+from TransBaseFunc import showmsg,auto_begin_task
 from TransDataProvider import TransDataProvider, TransDataBase
 from TransManual import TransManual
 from TransSetting import TransSetting
@@ -23,7 +23,6 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self._database = TransDataBase()  # 在此处写入基础数据
         self._provider = TransDataProvider()  # 数据提供对象
-        self._controller = TransController()  # 业务控制对象
 
         self._manual = None   # 手动传输窗口
         self._setting = None  # 设置窗口
@@ -44,6 +43,13 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.display_thread = DisplayThread()
         self.display_thread.trigger.connect(self.display_post)
+
+        self.timer_task = QTimer(self)  # 定时器，程序启动后延时显示数据
+        self.timer_task.timeout.connect(self.task)  # 启动进程显示界面，避免程序启动时，数据检索导致堵塞
+        self.timer_task.start(5*1000)  # 每隔1分启动一次
+        self.timer_task.setSingleShot(True)  # 只启动一次
+        self.task_thread = TaskThread(self.transinfo_list)
+        self.task_thread.trigger.connect(self.task_post)
 
         # 初始化时间和查询范围
         self.set_time_and_range()
@@ -89,13 +95,26 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
         except Exception as e:
             showmsg(str(e))
 
+    def task(self):
+        self.task_thread.transtype_list = self.transinfo_list
+        self.task_thread.start()
+
+    def task_post(self, signal):
+        if signal:
+            self.set_translog()
+
     def set_time_and_range(self):
+
+        # 日期选择空间
+        self.dateTimeEdit_begin.setCalendarPopup(True)
+        self.dateTimeEdit_end.setCalendarPopup(True)
+
         now = datetime.datetime.now()
         # 设置日期及日期格式
-        self.dateEdit_begin.setDate(now)
-        self.dateEdit_end.setDate(now)
-        self.dateEdit_begin.setDisplayFormat('yyyy-MM-dd')
-        self.dateEdit_end.setDisplayFormat('yyyy-MM-dd')
+        self.dateTimeEdit_begin.setDate(now)
+        self.dateTimeEdit_end.setDate(now)
+        self.dateTimeEdit_begin.setDisplayFormat('yyyy-MM-dd')
+        self.dateTimeEdit_end.setDisplayFormat('yyyy-MM-dd')
         # 设置时间及时间格式
         self.timeEdit_begin.setTime(datetime.time(0, 0, 0))
         self.timeEdit_end.setTime(datetime.time(23, 59, 59))
@@ -112,6 +131,7 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
         transinfo_list = param
         # 设置属性传输列表，避免定时器触发时检索
         self.transinfo_list = transinfo_list
+        print(self.transinfo_list)
 
         level_list = sorted(set([x.lvl for x in transinfo_list]))
         for level in level_list:
@@ -131,27 +151,27 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
                         child = QTreeWidgetItem(item[0])
                         child.setText(0, trans.text)
                         child.setText(1, str(trans.no))
+
+        self.treeWidget_menu.expandAll()
         return True, None
 
     def set_translog(self):
         """设置传输日志"""
         # 开始时间
-        begin_time = self.dateEdit_begin.text()
+        begin_time = "{} {}".format(self.dateTimeEdit_begin.text(), self.timeEdit_begin.text())
         # 结束时间
-        end_time = self.dateEdit_end.text()
+        end_time = "{} {}".format(self.dateTimeEdit_end.text(), self.timeEdit_end.text())
         # 状态
         status = self.comboBox_ramge.currentData()
         status = TransModelInit.trans_status_choice.get(status, '')
         # 类型
         no = self.treeWidget_menu.currentItem().text(1)
-
+        self.model.clear()
         # 获取数据库数据
-        result, translog_list = self._provider.get_trans_log(begin_time=begin_time, end_time=end_time, no=no, status=status)
+        result, translog_list = self._provider.get_trans_log(begin_time=begin_time, end_time=end_time, status=status, no=no)
         if not result:
             return result, translog_list
-        # 总行数
-        if not translog_list:
-            self.model.clear()
+
 
         headers = ("接口状态", "接口类型", "开始时间", "结束时间", "影响行数", "错误原因")
         self.model.setHorizontalHeaderLabels(headers)
@@ -163,8 +183,7 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
 
             status = translog.status
             status = choice_reverse.get(status, '')
-
-            text = translog.transtype.text
+            text = translog.text
             begin_time = translog.begin_time.strftime('%Y-%m-%d %H:%M:%S.%f')
             end_time = translog.end_time.strftime('%Y-%m-%d %H:%M:%S.%f')
             trans_count = translog.trans_count or 0
@@ -179,12 +198,15 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
                 self.model.setItem(row_num, col_num, item)
         # 排序
         self.model.sort(2, order=Qt.DescendingOrder)
-        # 自适应列宽
-        self.tableView_log.horizontalHeader().setDefaultSectionSize(118)
-        self.tableView_log.horizontalHeader()
 
-        self.tableView_log.verticalHeader().setDefaultSectionSize(25)
-
+        # 根据内容自适应列宽
+        self.tableView_log.resizeColumnsToContents()
+        header = self.tableView_log.horizontalHeader()
+        # 避免过去拥挤，每列设置一些空隙
+        for i in range(header.count()):
+            self.tableView_log.setColumnWidth(i, self.tableView_log.columnWidth(i) + 40)
+        # 最后一列补全剩下空隙
+        header.setStretchLastSection(True)
 
     def create_trayicon(self):
         """创建托盘"""
@@ -234,8 +256,6 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
             except Exception as e:
                 showmsg(str(e), QMessageBox.Critical)
 
-
-
     def manual(self):
         """手动传输"""
         try:
@@ -270,9 +290,30 @@ class DisplayThread(QThread):
             self.trigger.emit(signal)
 
 
+class TaskThread(QThread):
+    """自动运行任务"""
+    # 定义一个信号，表示任务完成，需要刷新界面
+    trigger = pyqtSignal(bool)
+
+    def __init__(self, transtype_list):
+        super(QThread, self).__init__()
+        self.transtype_list = transtype_list
+
+    def run(self):
+        """异步获取，获取运行时信息"""
+        try:
+            auto_begin_task(self.transtype_list)
+            signal = True
+            self.trigger.emit(signal)
+        except Exception as e:
+            self.trigger.emit(False)
+
+
+
 def f_main():
     """主程序，保证程序单实例运行"""
     app = QtWidgets.QApplication(sys.argv)
+    app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
     servername = "TransTools"
 
     socket = QLocalSocket()
@@ -288,8 +329,8 @@ def f_main():
 
     try:
         main = Main()
-        app.setStyleSheet(qdarkstyle.load_stylesheet_pyqt5())
         main.show()
+
         sys.exit(app.exec_())
     except Exception as e:
         showmsg(str(e), type=QMessageBox.Critical)

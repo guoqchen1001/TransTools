@@ -1,8 +1,10 @@
-import time
+import time, datetime
 from sqlalchemy import Table, MetaData,Column, String
 from sqlalchemy.sql import text
 from TransModels import WMSTable
 from TransDataProvider import TransDataProvider
+from TransModels import TransLog
+
 
 class TransTask:
 
@@ -146,28 +148,25 @@ class ItemCls(TransTask):
             Column("ftrans_wms_flag", String)
         )
 
-
     sql = text(
-      "select fitem_clsno as GROUP_NO, "
+      "select top 2 fitem_clsno as GROUP_NO, "
       "fitem_clsname  as GROUP_NAME,"
       "flvl_num as LEVELID,"
       "convert(varchar(30), ftransid) as SHEETID,"
       "case fprt_no when '*' then fitem_clsno else fprt_no end as HEADGROUP_NO "
       "from  t_bc_master " 
       "where ftrans_wms_flag <> '1'"
-      ).columns(
-        WMSTable.itemcls.c.GROUP_NO,
-        WMSTable.itemcls.c.GROUP_NAME,
-        WMSTable.itemcls.c.LEVELID,
-        WMSTable.itemcls.c.SHEETID,
-        WMSTable.itemcls.c.HEADGROUP_NO
-    )
+      )
 
 
 
-itemcls = ItemCls()
-itemcls.get_from_source()
-print(itemcls.run())
+
+
+
+
+
+
+
 
 
 

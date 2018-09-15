@@ -1,8 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from TransConfiger import Config
-from TransModels import TransType, Base, TransLog,TransModelInit
-
+from TransModels import TransType, Base, TransLog, TransModelInit
 
 
 class TransDataBase:
@@ -117,7 +116,7 @@ class TransDataProvider:
         """获取传输日志列表"""
         result, session = self.get_orm_session()
         if not result:
-            return result, session
+            return result, sessions
         result = session.query(TransLog)
         if kwargs.get("no", None):
             result = result.filter(TransLog.no.like('{}%'.format(kwargs["no"])))
@@ -135,4 +134,5 @@ if __name__ == "__main__":
     # provider = TransDataProvider()
     # print(provider.get_trans_log(status="1", begin_time="2018-09-12"))
     pass
+
 

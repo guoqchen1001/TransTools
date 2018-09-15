@@ -6,7 +6,8 @@ from PyQt5.QtGui import QIntValidator
 from setting import Ui_Form
 from TransDataProvider import TransDataProvider
 from TransModels import TransType
-from TransController import showmsg
+from TransBaseFunc import showmsg
+
 
 class TransSetting(QtWidgets.QWidget, Ui_Form):
     """ 设置界面 """
@@ -21,7 +22,6 @@ class TransSetting(QtWidgets.QWidget, Ui_Form):
         self.pertab_num = 9  # 一个tab页显示9行数据
         self.transgroupbox_list = []
         self.dusplay()
-
 
     def dusplay(self):
         """获取设置参数"""
@@ -160,7 +160,7 @@ class TransGroupBox(QWidget):
 
             self.radiobutton_manual.setObjectName("{}_radiobutton_manual".format(transid))
             self.radiobutton_auto.setObjectName("{}_radiobutton_auto".format(transid))
-            if self.transtype.trans_type:
+            if self.transtype.trans_type == '1':
                 self.radiobutton_auto.setChecked(True)
                 self.radiobutton_manual.setChecked(False)
             else:
@@ -181,7 +181,10 @@ class TransGroupBox(QWidget):
         self.transtype.end_hour = self.timeedit_end.time().hour()
         self.transtype.space_type = self.combobox_space.currentData()
         self.transtype.space_time = self.lineedit_space.text()
-        self.transtype.trans_type = self.radiobutton_manual.isCheckable()
+        if self.radiobutton_manual.isChecked():
+            self.transtype.trans_type = '0'
+        else:
+            self.transtype.trans_type = '1'
 
 
 if __name__ == "__main__":

@@ -2,8 +2,8 @@ import sys
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QListWidgetItem
 from manual import Ui_Dialog
-from TransController import TransController
 from TransDataProvider import TransDataProvider
+from TransBaseFunc import showmsg, begin_task
 
 
 class TransManual(QtWidgets.QDialog, Ui_Dialog):
@@ -13,8 +13,6 @@ class TransManual(QtWidgets.QDialog, Ui_Dialog):
         self.setupUi(self)
         # 数据提供实例
         self._provider = TransDataProvider()
-        # 传输控制实例
-        self._controller = TransController()
         # 传输列表
         if not translist:
             result, translist = self._provider.get_trans_list()
@@ -56,7 +54,6 @@ class TransManual(QtWidgets.QDialog, Ui_Dialog):
 
     def trans(self):
         """手动传输"""
-        translit = []
         if not self.listviews:
             return True, ''
         for listview in self.listviews:
@@ -65,8 +62,11 @@ class TransManual(QtWidgets.QDialog, Ui_Dialog):
                 if not item.checkState():
                     continue
                 sheetid = item.data(1)
-                translit.append(sheetid)
-        self._controller.task_manual(translit)
+                try:
+                    begin_task(sheetid)
+                except Exception as e:
+                    print(str(e))
+
         showmsg("传输完成")
 
 
@@ -75,3 +75,4 @@ if __name__ == "__main__":
     manul = TransManual()
     manul.show()
     sys.exit(app.exec_())
+
