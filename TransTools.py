@@ -1,17 +1,21 @@
 import datetime
 import sys
+import _mssql
+import uuid
+import decimal
+import pymssql
 from PyQt5 import QtWidgets, QtGui
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import Qt, QTimer, QEvent, QThread, pyqtSignal
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtGui import QIcon
 import qdarkstyle
-from mainwindow import Ui_MainWindow
 from TransBaseFunc import showmsg,auto_begin_task
 from TransDataProvider import TransDataProvider, TransDataBase
 from TransManual import TransManual
 from TransSetting import TransSetting
 from TransModels import TransModelInit
+from mainwindow import Ui_MainWindow
 
 
 class Main(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -88,10 +92,13 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
             return
         try:
             translist = signal.get("translist", None)
+            translog = signal.get("translog", None)
             if translist:
+                # 设置传输列表
                 self.set_transinfo(translist)
-                #
-                self.set_translog()
+            if translog:
+                # 设置传输日志
+                self.set_translog(translog_list=translog)
         except Exception as e:
             showmsg(str(e))
 
@@ -131,7 +138,6 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
         transinfo_list = param
         # 设置属性传输列表，避免定时器触发时检索
         self.transinfo_list = transinfo_list
-        print(self.transinfo_list)
 
         level_list = sorted(set([x.lvl for x in transinfo_list]))
         for level in level_list:
@@ -155,9 +161,7 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
         self.treeWidget_menu.expandAll()
         return True, None
 
-    def set_translog(self):
-        """设置传输日志"""
-        # 开始时间
+    def get_trans_log_parm(self):
         begin_time = "{} {}".format(self.dateTimeEdit_begin.text(), self.timeEdit_begin.text())
         # 结束时间
         end_time = "{} {}".format(self.dateTimeEdit_end.text(), self.timeEdit_end.text())
@@ -166,14 +170,20 @@ class Main(QtWidgets.QMainWindow, Ui_MainWindow):
         status = TransModelInit.trans_status_choice.get(status, '')
         # 类型
         no = self.treeWidget_menu.currentItem().text(1)
-        self.model.clear()
-        # 获取数据库数据
-        result, translog_list = self._provider.get_trans_log(begin_time=begin_time, end_time=end_time, status=status, no=no)
-        if not result:
-            return result, translog_list
+        return dict(begin_time=begin_time, end_time=end_time, status=status, no=no)
 
+    def set_translog(self, *args, **kwargs):
+        """设置传输日志"""
+        # 开始时间
+        if kwargs.get("translog_list", None) is None:
+            parm = self.get_trans_log_parm()
+            # 获取数据库数据
+            translog_list = self._provider.get_trans_log(**parm)
+        else:
+            translog_list = kwargs.get("translog_list")
 
         headers = ("接口状态", "接口类型", "开始时间", "结束时间", "影响行数", "错误原因")
+        self.model.clear()
         self.model.setHorizontalHeaderLabels(headers)
         self.model.setRowCount(len(translog_list))
         self.model.setColumnCount(len(headers))
@@ -279,15 +289,20 @@ class DisplayThread(QThread):
     # 定义一个信号
     trigger = pyqtSignal(dict)
 
+    def __init__(self, translog_parm=None):
+        super(DisplayThread, self).__init__()
+        self.translog_parm = translog_parm
+
     def run(self):
         """异步获取，获取运行时信息"""
         _provider = TransDataProvider()  # 数据库数据提供对象
-        result, translist = _provider.get_trans_list()  # 获取传输列表
-        if not result:
-            showmsg(translist, type=QMessageBox.Critical)
-        else:
-            signal = dict(translist=translist)
+        try:
+            translist = _provider.get_trans_list()  # 获取传输列表
+            translog = _provider.get_trans_log(self.translog_parm)
+            signal = dict(translist=translist, translog=translog)
             self.trigger.emit(signal)
+        except Exception as e:
+            showmsg(str(e), type=QMessageBox.Critical)
 
 
 class TaskThread(QThread):
@@ -307,8 +322,6 @@ class TaskThread(QThread):
             self.trigger.emit(signal)
         except Exception as e:
             self.trigger.emit(False)
-
-
 
 def f_main():
     """主程序，保证程序单实例运行"""

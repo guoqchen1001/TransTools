@@ -3,7 +3,36 @@ from sqlalchemy import Table, MetaData,Column, String
 from sqlalchemy.sql import text
 from TransModels import WMSTable
 from TransDataProvider import TransDataProvider
-from TransModels import TransLog
+
+
+class SourceDataNotDefined(Exception):
+
+    def __str__(self):
+        return "传输任务数据来源没有定义"
+
+
+class TargetTableNotDefined(Exception):
+
+    def __str__(self):
+        return "传输任务目的数据模型没有定义"
+
+
+class UpdateSourceFlagError(Exception):
+
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __str__(self):
+        return "更新源数据更新表示出错,错误信息:{}".format(self.msg)
+
+
+class InsertTargetFlagError(Exception):
+
+    def __init__(self, msg):
+        self.msg = msg
+
+    def __str__(self):
+        return "写入数据到目的数据库时出错,错误信息:{}".format(self.msg)
 
 
 class TransTask:
@@ -31,18 +60,17 @@ class TransTask:
 
     def get_from_source(self):
         """从源数据获取数据"""
-        if self.source_table:
-            return False, None
+        if self.source_table is None and  self.sql is None:
+            raise SourceDataNotDefined
+        if self.source_table is not None:
+            return False
         else:
-            if self.sql is not None:
-                return self.get_data_from_sql(self.sql)
-            else:
-                return False, "请定义有效的来源数据模型或者sql"
+            return self.get_data_from_sql(self.sql)
 
     def upert_to_target(self):
         """写入数据"""
         if self.target_table is None:
-            return False, "请定义有效的来源数据模型"
+            raise TargetTableNotDefined
         return self.upert_data_to_basetable()
 
     def update_flag_to_source(self):
@@ -50,27 +78,29 @@ class TransTask:
         engine = self._source_engine
         metadata = MetaData(bind=engine)
         conn = engine.connect()
-        now = int(round(time.time()*1000))
-        temptable_name = "#{}{}".format(self.__class__.__name__, now)
+        timestap = int(round(time.time()*1000))
+        temptable_name = "#{}{}".format(self.__class__.__name__, timestap)
+
         # 创建临时表
         self.update_tmptable = Table(temptable_name, metadata,
                           Column(self.update_target_col_name, String(50), primary_key=True),
                           )
+
         # 必须绑定到此次链接，否则查询不到临时表
         self.update_tmptable.create(bind=conn)
+
         conn.execute(self.update_tmptable.insert(), self.select_data)
+        tran = conn.begin()
         stmt = self.update_flag_table.update()\
             .where(self.update_flag_table.c[self.update_source_col_name] == self.update_tmptable.c[self.update_target_col_name])\
             .values(**self.update_clause)
-        tran = conn.begin()
-
         try:
             conn.execute(stmt)
             tran.commit()
-            return True, None
+            return True
         except Exception as e:
             tran.rollback()
-            return False, "更新写入标志出错,错误信息{}".format(str(e))
+            raise UpdateSourceFlagError(str(e))
         finally:
             conn.close()
 
@@ -80,41 +110,34 @@ class TransTask:
 
     def get_data_from_sql(self, sql):
         """通过sql获取数据"""
-        result, engine = self.get_engine(self.source_engine_name)
-        if not result:
-            return result, engine
+        engine = self.get_engine(self.source_engine_name)
         self._source_metadata = MetaData(bind=engine)
         self._source_engine = engine
-        try:
-            conn = engine.connect()
-            self.select_data = conn.execute(sql).fetchall()
-            conn.close()
-            return True, None
-        except Exception as e:
-            return False, str(e)
+
+        conn = engine.connect()
+        self.select_data = conn.execute(sql).fetchall()
+        conn.close()
+        return True
 
     def upert_data_to_basetable(self):
         if not self.select_data:
-            return True, None
-        result, engine = self.get_engine(self.target_engine_name)
-        if not result:
-            return result, engine
+            return
+        engine = self.get_engine(self.target_engine_name)
         conn = engine.connect()
         trans = conn.begin()
         try:
             conn.execute(self.target_table.insert(), self.select_data)
-            result, data = self.update_flag_to_source()
-            if not result:
-                trans.rollback()
-                return False, "更新数据库标识时出现异常，错误信息：{}".format(data)
-            else:
-                trans.commit()
-                return True, None
+            self.update_flag_to_source()
+            trans.commit()
+            return True
         except Exception as e:
             trans.rollback()
-            return False, "写入数据库导数据时发生异常，错误信息:{}".format(str(e))
+            raise InsertTargetFlagError(str(e))
         finally:
             conn.close()
+
+    def get_result(self):
+        return len(self.select_data)
 
     @staticmethod
     def clone_table(name, table, metadata):
@@ -125,14 +148,15 @@ class TransTask:
 
     def run(self):
         # 读取数据
-        result, data = self.get_from_source()
-        if not result:
-            return result, data
+
+        # 获取数据
+        self.get_from_source()
+
         # 写入数据
-        result, data = self.upert_to_target()
-        if not result:
-            return result, data
-        return True, len(self.select_data)
+        self.upert_to_target()
+
+        # 返回结果
+        return self.get_result()
 
 
 class ItemCls(TransTask):
